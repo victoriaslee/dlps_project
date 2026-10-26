@@ -29,6 +29,7 @@ paper; the default run uses M as does the paper.
 ```text
 project/
   config.yaml       # model and training settings
+  report.pdf        # report
   run.py            # command-line entrypoint
   requirements.txt  # Python dependencies
   t2l/
