@@ -3,8 +3,7 @@
 This project is a smaller implementation of the Text-to-LoRA idea from
 [the original paper](https://arxiv.org/abs/2506.06105). The main experiment
 uses a hypernetwork to generate LoRA adapters from short descriptions of a
-task. The code was written independently for this class project; it is not a
-copy of the [SakanaAI implementation](https://github.com/SakanaAI/text-to-lora).
+task. 
 
 The project is intentionally scaled down so it can run on an Apple Silicon
 machine or a consumer GPU. The default configuration uses Qwen2.5-1.5B,
@@ -23,7 +22,7 @@ There are two ways to train the hypernetwork:
 The code also includes a regular multi-task LoRA baseline, benchmark
 evaluation, a description ablation, and a t-SNE plot of task-encoder outputs.
 The hypernetwork supports the L, M, and S output variants described in the
-paper; the default run uses M.
+paper; the default run uses M as does the paper.
 
 ## Project layout
 
@@ -58,7 +57,7 @@ CPU. CPU training will be very slow.
 
 ## Running the project
 
-Run the stages separately with:
+Each stage should be run sequentially as follows:
 
 ```bash
 # Create benchmark and SFT task descriptions
@@ -86,7 +85,7 @@ To run all stages in sequence:
 python run.py all
 ```
 
-The full run can take several hours. For a shorter test run, reduce
+The full run takes ~2 hours. For a shorter test run, reduce
 `oracle.max_steps`, `recon.max_steps`, `sft.max_steps`, or
 `eval.max_samples` in [`config.yaml`](config.yaml).
 
@@ -128,7 +127,7 @@ already present.
 | Evaluation examples | 500 per benchmark |
 
 The text encoder is frozen and mean-pools its token representations. The
-base language model is also frozen when the hypernetwork is trained for SFT;
+base language model is also frozen when the hypernetwork is trained for SFT and
 only the hypernetwork is updated.
 
 ## Results currently in `artifacts/`

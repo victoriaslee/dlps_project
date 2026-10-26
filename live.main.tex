@@ -1,8 +1,7 @@
 \documentclass{article}
 
 % Midterm / class project report using NeurIPS 2026 formatting
-\usepackage[preprint]{format_NeurIPS_2026/neurips_2026}
-
+\usepackage[preprint]{neurips_2026}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{hyperref}
@@ -16,163 +15,173 @@
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{float}
+\usepackage{enumitem}
 
 \title{Text-to-LoRA: Background, Class-Scale Recreation,\\and Extensions}
 
-\author{%
+\author{
   Victoria Lee \\
   Deep Learning Midterm Project \\
-  \texttt{Text-to-LoRA recreation (arXiv:2506.06105)} \\
+  \texttt{Text-to-LoRA recreation (arXiv:2506.06105)}
 }
 
 \begin{document}
-
 \maketitle
 
 \begin{abstract}
-Foundation models are typically specialized with parameter-efficient fine-tuning such as Low-Rank Adaptation (LoRA), which still requires per-task datasets, training runs, and hyperparameter search.
-\textit{Text-to-LoRA} (T2L)~\cite{charakorn2025texttolora} instead trains a hypernetwork that emits task-specific LoRA weights from a natural-language task description in a single forward pass.
-This midterm report summarizes the original paper, describes our independent recreation on an Apple M5 Pro with 24\,GB unified memory, and outlines extensions for the final project.
-We implement both reconstruction distillation of oracle LoRAs and end-to-end supervised fine-tuning (SFT) of the hypernetwork, with L/M/S architectural variants, Bias-HyperInit, z-scored reconstruction targets, and text conditioning via a frozen sentence encoder.
+Large language models can be adapted to specific tasks using methods such as Low-Rank Adaptation (LoRA). Although LoRA updates only a small number of parameters, it still usually requires a separate dataset, training run, and set of tuning decisions for each task. \textit{Text-to-LoRA} (T2L) takes a different approach: it trains a hypernetwork to generate LoRA weights directly from a natural-language description of a task.
+
+This report reviews the original T2L paper, describes a class-scale recreation using a 1.5B-parameter language model, and outlines possible directions for the final project. The recreation implements two training approaches: reconstructing existing task-specific LoRA adapters and training the hypernetwork end-to-end with a language-modeling objective. It also explores the paper's L/M/S hypernetwork variants, Bias-HyperInit, normalized reconstruction targets, and text conditioning with a frozen sentence encoder. Finally, we compare the results with those reported in the paper and identify extensions to investigate in the final project. 
+
 \end{abstract}
 
 \section{Introduction}
 
-Large language models (LLMs) exhibit broad capabilities but specialization poses challenges due to expensive compute and data requirements. Freezing base weights and learning a small adapter, as introduced in LoRA~\cite{hu2022lora}, is the most common approach, but is still costly in data, compute, and engineering overhead.
+Large language models can perform many tasks, but adapting them to a new task can require substantial time, data, and computing resources. LoRA \cite{hu2022lora} makes this process more efficient by keeping the original model weights fixed and training a much smaller set of adapter parameters. However, users still generally need to train a separate adapter for each new task.
 
-Charakorn et al.~\cite{charakorn2025texttolora} ask whether many LoRA adapters share an underlying adaptation mechanism that a neural network can compress and, at test time, decode from natural language alone.
-Their answer is \textbf{Text-to-LoRA (T2L)}: a hypernetwork~\cite{ha2016hypernetworks} conditioned on a text embedding of the task description that generates LoRA matrices $A$ and $B$ for selected query and value projections across all layers, without requiring a separate per-task LoRA optimization run.
+\cite{charakorn2025texttolora} ask whether a model could learn how to adapt to tasks in a more general way. Their method, \textbf{Text-to-LoRA (T2L)}, uses a hypernetwork \cite{ha2016hypernetworks} to generate LoRA weights from a written task description. The hypernetwork combines a representation of the task text with information about the model layer and projection type. It then generates the LoRA matrices for the selected query and value projections across the model in one batched forward pass, rather than training a new adapter from scratch for every task.
 
-\textbf{Midterm goals.}
-For this course project we (i)~review the paper's motivation, method, and empirical claims; (ii)~reimplement the core method at class scale with newly written code; and (iii)~propose extensions for the final project.
+\paragraph{Goals for this project.}
+This midterm report has three goals: (1) explain the original paper's motivation, method, and main findings; (2) recreate its core approach at a scale that fits the available hardware; and (3) identify extensions to test in the final project.
 
 \section{Background: The Original Paper}
 
 \subsection{Problem setting}
 
-Given tasks $\mathcal{T}=\{t^1,\ldots,t^T\}$ with fine-tuning sets $\mathcal{D}^i$ and natural-language descriptions $Z^i$, standard LoRA solves
+Suppose we have a collection of tasks, each with its own training data and a natural-language description. With standard LoRA, we train a separate adapter for each task by minimizing the supervised fine-tuning loss while keeping the pretrained model weights fixed:
+
 \begin{equation}
 \Delta W^i = \arg\min_{\Delta W^i}\,\mathcal{L}_{\mathrm{SFT}}(\mathcal{D}^i,\Psi,\Delta W^i),
 \end{equation}
-where $\Psi$ denotes frozen pretrained weights and $\Delta W = BA$ with low rank $r$.
-T2L instead learns hypernetwork parameters $\theta$ such that
+where $\Psi$ represents the frozen pretrained weights and the LoRA update is written as $\Delta W = BA$, with a low rank $r$.
+
+T2L replaces the separate adapter-training step with a hypernetwork. The hypernetwork learns parameters $\theta$ that map task information to the adapter weights for each module and layer:
+
 \begin{equation}
 \Delta W^i_{m,l} = h_\theta(\phi^i_{m,l}),\qquad
 \phi^i_{m,l}=\mathrm{concat}\big[f(z^i),\,E[m],\,E[l]\big],
 \end{equation}
-where $f(z)$ is a text embedding (for example, a mean-pooled representation from \texttt{gte-large-en-v1.5}), and $E[m]$, $E[l]$ are learned embeddings for module type and layer index.
+where $f(z)$ is an embedding of the task description (for example, the CLS representation from \texttt{gte-large-en-v1.5}). The learned embeddings $E[m]$ and $E[l]$ identify the module type and layer index. In other words, the hypernetwork uses both the meaning of the task description and the location of the adapter in the model to decide which weights to generate.
 
-\subsection{Architectures (L / M / S)}
+\subsection{Hypernetwork architectures: L, M, and S}
 
-Hypernetwork capacity is mostly determined by the output head.
-The paper proposes three inductive biases~(Fig.~2 / App.~F in~\cite{charakorn2025texttolora}):
+The three T2L variants differ mainly in how the hypernetwork produces the LoRA matrices:
+
 \begin{itemize}
-  \item \textbf{L}: head emits both $A$ and $B$ ($2\cdot r\cdot d$ outputs).
-  \item \textbf{M}: shared head emits either $A$ or $B$, selected by an A/B embedding ($r\cdot d$).
-  \item \textbf{S}: head emits one rank vector at a time, with A/B and rank embeddings ($d$).
+  \item \textbf{L}: the output head generates both $A$ and $B$ together, producing $2rd$ values.
+  \item \textbf{M}: a shared output head generates either $A$ or $B$, depending on an A/B embedding, producing $rd$ values.
+  \item \textbf{S}: the head generates one rank vector at a time, using A/B and rank embeddings, and produces $d$ values per output.
 \end{itemize}
-All variants share a backbone in which the task encoder $\to$ mixer MLP $\to$ residual MLP blocks $\to$ final MLP, with Bias-HyperInit~\cite{beck2023hyper} for stable training (A-like uniform bias, B zeros; scaled for M/S).
 
-\subsection{Training: Reconstruction vs.\ SFT}
+All three variants use the same general structure: a task encoder feeds into a mixer MLP, followed by residual MLP blocks and a final output MLP. The paper also uses Bias-HyperInit \cite{beck2023hyper} to initialize the hypernetwork's output in a way intended to make training more stable. In broad terms, the initialization starts the A-like outputs with a uniform bias and the B-like outputs at zero, with corresponding scaling for the M and S variants.
 
-For reconstruction, given a library of pretrained LoRAs $\Omega$, we minimize elementwise L1 between $h_\theta(\phi)$ and the target adapters.
-The paper predicts \emph{z-scored} weight entries and denormalizes at inference.
-Reconstruction recovers oracle benchmark LoRAs~(Table~1) but struggles at zero-shot generalization when similar tasks have distant adapters in weight space~(Table~6, App.~D).
+\subsection{Training: reconstruction and supervised fine-tuning}
 
-For SFT, we optimize $\theta$ end-to-end with language-modeling loss through the frozen LLM plus generated LoRA~(Eq.~5), sampling a description per example.
-SFT on hundreds of Super-NaturalInstructions (SNI)~\cite{wang2022sni} tasks yields zero-shot adapters that beat multi-task LoRA and approach task-specific oracles on several benchmark tasks~(Table~2).
+The paper studies two ways to train the hypernetwork.
 
-\subsection{Key empirical takeaways}
+\paragraph{Reconstruction.}
+The authors begin with a collection of task-specific LoRA adapters, which they treat as reference or ``oracle'' adapters. They train the hypernetwork to reproduce these existing weights by minimizing the elementwise \textit{L1} distance between its predictions and the reference weights. Before training, the target weights are z-scored, and the predictions are converted back to the original scale at inference time.
+
+This approach shows that a hypernetwork can compress a collection of existing adapters while preserving much of their task performance. However, reproducing known adapters does not necessarily mean the hypernetwork will generate good adapters for new tasks. The paper reports that zero-shot generalization can be weak when tasks with similar descriptions have adapters that are far apart in weight space (Table 6 and Appendix D in the paper).
+
+\paragraph{Supervised fine-tuning (SFT).}
+Instead of asking the hypernetwork to copy existing adapters, the authors can train it through the frozen language model itself. The hypernetwork generates a LoRA adapter from a task description, and the resulting model is optimized using a language-modeling loss. During training, the system samples a task description for each example.
+
+Training on hundreds of Super-NaturalInstructions (SNI) tasks \cite{wang2022sni} accessed via HuggingFace allows T2L to generate adapters for tasks it has not specifically trained an adapter for. In the paper's reported experiments, these generated adapters outperform a multi-task LoRA baseline and approach the performance of task-specific oracle adapters on several benchmarks (Table 2).
+
+\subsection{Main findings from the paper}
+
+The paper's results point to four main takeaways:
 
 \begin{enumerate}
-  \item Lossy compression of many LoRAs is possible while retaining much of oracle accuracy.
-  \item Zero-shot generation requires text conditioning and benefits strongly from SFT rather than just reconstruction.
-  \item Performance scales with number of training tasks when compute is also scaled accordingly. 
-  \item Generated adapters cluster by task semantics in activation space~(t-SNE); thus, description alignment matters~(Table~5).
+  \item A hypernetwork can reproduce a collection of LoRA adapters with some loss in accuracy, making it possible to represent many task-specific adapters compactly.
+  \item Generating adapters for unseen tasks is harder than reconstructing known ones. Text descriptions are important, and end-to-end SFT performs better for this purpose than reconstruction alone.
+  \item Increasing the number of training tasks can improve performance, but the training budget also needs to increase enough to learn from the additional tasks.
+  \item The generated adapters show patterns related to task meaning in activation-space visualizations such as t-SNE. This supports the idea that the task descriptions help organize the generated representations, and that the quality of the descriptions matters.
 \end{enumerate}
 
 \section{Recreation}
 
-\subsection{Design constraints and fidelity}
+\subsection{Design constraints and similarity to the original}
 
-We use an Apple M5 Pro with 24\,GB unified memory, so compute is greatly downscaled relative to the paper, but the general approach is preserved:
-hypernetwork $\to$ LoRA $A/B$ from text, L/M/S heads, Bias-HyperInit, reconstruction via z-scored weights, and SFT through dynamically generated LoRA adapters. Our experiments use the M variant, a frozen all-MiniLM-L6-v2 description encoder, and rank-8 adapters targeting \texttt{q\_proj} and \texttt{v\_proj}.
+The original experiments use substantially more computing resources than are available for this class project. We therefore use the 1.5B-parameter Qwen2.5-1.5B-Instruct model, which can run on the available Apple MacBook Pro with 24 GB of unified memory. The goal is to preserve the method's main components while keeping the experiments feasible on local hardware.
 
-The code is our independent implementation (package \texttt{t2l/}, single CLI \texttt{run.py}) of the method described in the paper; it does not copy the public repository.
+The recreation includes a hypernetwork that generates LoRA $A$ and $B$ matrices from text, the L/M/S output designs, Bias-HyperInit, reconstruction from z-scored weights, and SFT through injected LoRA adapters. It targets the $q\_proj$ and $v\_proj$ modules with rank $8$. Unlike the original paper, the implementation described below uses the all-MiniLM-L6-v2 sentence encoder.
 
-\begin{table}[H]
-  \centering
-  \caption{Paper setup vs.\ our class-scale recreation.}
-  \label{tab:scale}
-  \begin{tabular}{lcc}
-    \toprule
-    & Paper & This project \\
-    \midrule
-    Base LLM & Mistral-7B-Instruct & Qwen2.5-1.5B-Instruct \\
-    Embedder & gte-large-en-v1.5 & all-MiniLM-L6-v2 \\
-    Default variant & M (reported) & M \\
-    Oracle tasks & 9 benchmark tasks & 4 (BoolQ, ARC-E, PIQA, OpenBookQA) \\
-    SFT corpus & 479 SNI tasks & 12 train + 4 holdout synthetic tasks \\
-    SFT steps & up to $\sim$1M & 2,500 \\
-    Hardware & H100 80\,GB & Apple M5 Pro, 24\,GB unified \\
-    Descriptions & GPT-4o mini & templates + paraphrases \\
-    \bottomrule
-  \end{tabular}
+The implementation follows the pipeline in Figure~\ref{fig:sketch} and uses \texttt{run.py} as its command-line entry point. The original implementation was used as a reference for the method, while the project code was organized as a separate implementation.
+
+\begin{table}[t]
+\centering
+\caption{The original paper's setup compared with this class-scale recreation.}
+\label{tab:scale}
+\begin{tabular}{lcc}
+\toprule
+ & Paper & This project \\
+\midrule
+Base LLM & Mistral-7B-Instruct & Qwen2.5-1.5B-Instruct \\
+Embedder & gte-large-en-v1.5 & all-MiniLM-L6-v2 \\
+Default variant & M (reported) & M \\
+Oracle tasks & 9 benchmarks & 4 (BoolQ, ARC-E, PIQA, OpenBookQA) \\
+SFT corpus & 479 SNI tasks & 16 multi-task slots (synthetic by default; HF/SNI optional) \\
+SFT steps & Up to $\sim$1M & 2,500 \\
+Hardware & H100-class GPUs & Apple MacBook Pro, 24 GB unified memory, MPS \\
+Descriptions & GPT-4o mini & Templates and paraphrases \\
+\bottomrule
+\end{tabular}
 \end{table}
 
 \subsection{Implementation overview}
 
-\begin{figure}[H]
-  \centering
-  \fbox{\parbox{0.92\linewidth}{\centering\small
-  task text $\xrightarrow{f}$ mean-pooled embedding
-  $\oplus$ layer/module emb (+\,A/B, rank for M/S)\\[2pt]
-  $\to$ residual MLP backbone $\to$ head $\to$ LoRA $A,B$\\[2pt]
-  $\to$ inject into frozen LLM $\to$ L1 (recon) or CE (SFT)
-  }}
-  \caption{Method sketch matching~\cite{charakorn2025texttolora}, implemented in \texttt{t2l/model.py}.}
-  \label{fig:sketch}
+The implementation outlined in Figure ~\ref{fig:sketch} follows the same high-level pipeline as the paper:
+
+\begin{figure}[!htbp]
+\centering
+\fbox{\parbox{0.92\linewidth}{\centering\small
+Task description $\xrightarrow{f}$ text embedding\\
+$\oplus$ layer and module embeddings (plus A/B and rank embeddings for M/S)\\[2pt]
+$\to$ residual MLP backbone $\to$ output head $\to$ LoRA $A,B$\\[2pt]
+$\to$ frozen language model with injected LoRA $\to$ L1 loss (reconstruction) or cross-entropy loss (SFT)
+}}
+\caption{Overview of the T2L pipeline implemented in \texttt{t2l/model.py}.}
+\label{fig:sketch}
 \end{figure}
 
-\paragraph{Hypernetwork (\texttt{t2l/model.py}).}
-\texttt{HyperModulator} implements the L/M/S output designs; the reported experiments use M.
-\texttt{TaskEmbedder} wraps a frozen all-MiniLM-L6-v2 encoder~\cite{wang2020minilm,reimers2019sentencebert} and mean-pools its token representations into a 384-dimensional description embedding.
-\texttt{DynamicLoRALinear} replaces target linears so generated $A,B$ remain on the autograd graph during SFT (buffers would block gradients).
+\paragraph{Model and hardware}
+The base model was Qwen2.5-1.5B-Instruct accessed through HuggingFace. Experiments ran on an Apple M5 Pro with 24 GB unified memory using the MPS backend and FP16 precision. Gradient checkpointing was disabled. The random seed was 42.
 
-\paragraph{Pipeline (\texttt{run.py}).}
-\begin{enumerate}
-  \item \texttt{descriptions} --- build description banks.
-  \item \texttt{oracles} --- train per-task PEFT LoRAs; pack $A/B$ tensors.
-  \item \texttt{recon} --- distill z-scored oracles with text (or one-hot) conditioning; early-stop on L1.
-  \item \texttt{sft} --- end-to-end cross-entropy optimization through the frozen base model and dynamically generated LoRA adapters.
-  \item \texttt{multitask} / \texttt{eval} --- baselines, zero-shot T2L, description ablation, t-SNE of task-encoder activations.
+\paragraph{LoRA and Hypernetwork}
+LoRA adapters targeted the query and value projection modules in every transformer layer. Adapters used rank $r=8$, scaling parameter $\alpha=16$, RSLoRA scaling, and dropout 0.05. The M hypernetwork
+variant was used. The \texttt{TaskEmbedder} uses the frozen all-MiniLM-L6-v2 sentence encoder from HuggingFace to map task descriptions to 384-dimensional embeddings. Task embeddings had dimension 64, module and layer embeddings each had dimension 32, the residual hidden dimension was 128, and the expanded MLP dimension was 512. \texttt{DynamicLoRALinear} replaces the target linear layers so the generated $A$ and $B$ weights remain connected to the gradient computation during SFT. This is important because storing the generated weights only in buffers would prevent gradients from flowing back through them to train the hypernetwork.
+
+\paragraph{Training and evaluation pipeline (\texttt{run.py}).}
+The command-line pipeline is divided into several stages:
+\begin{enumerate}[itemsep=2pt, topsep=2pt, parsep=0pt, partopsep=0pt]
+  \item \texttt{descriptions}: creates a set of natural-language descriptions for the tasks.
+  \item \texttt{oracles}: trains a separate PEFT LoRA adapter for each task (BoolQ, ArcEasy, PIQA, and OpenBookQA) with 300 optimizer steps using the learning rate $2\times10^{-4}$, batch size 1, no gradient accumulation, maximum sequence length 256, and at most 1,000 training examples. Collects the resulting $A/B$ tensors.
+  \item \texttt{recon}: trains the hypernetwork to reproduce the oracle adapters using z-scored targets and text or one-hot conditioning. Early stopping is based on L1 loss on z-scored LoRA weights, up to 5,000 steps, learning rate $10^{-3}$, batch size 2, and eight descriptions per task. The early-stopping threshold was $10^{-3}$. The best observed loss was 0.0956.
+  \item \texttt{sft}: used 16 training slots and four held-out slots derived from eight unique Hugging Face classification datasets. Some datasets were repeated under separate task identifiers. Training used 2,500 optimizer steps, learning rate $5\times10^{-5}$, batch size 1, sequence length 192, 128 examples per task, and 16 descriptions per task.
+  \item \texttt{multitask} and \texttt{eval}: run baseline comparisons, evaluate zero-shot T2L, test different task descriptions, and visualize task-encoder activations with t-SNE.
 \end{enumerate}
-
-\paragraph{Memory recipe.}
-The reported run used an Apple M5 Pro with 24\,GB unified memory and Apple's MPS backend. The frozen Qwen2.5-1.5B-Instruct base model runs in FP16. The configuration is intentionally small enough to target roughly 8--16\,GB consumer GPUs as well. SFT uses batch size 1 and no gradient checkpointing; reconstruction does not backpropagate through the language model and is comparatively cheap.
-
-\subsection{Experimental protocol (midterm)}
-
-We evaluate on BoolQ, ARC-Easy, PIQA, and OpenBookQA using 500 examples per benchmark and report:
-\begin{itemize}
-  \item \textbf{Reconstruction recovery}: recon-T2L accuracy vs.\ task-specific oracle LoRAs (Table~1 analog).
-  \item \textbf{Zero-shot SFT-T2L} vs.\ the frozen base model (a reduced Table~2 analog).
-  \item \textbf{Description ablation}: aligned vs.\ random / cross-task text (Table~5 analog).
-  \item \textbf{Qualitative analysis}: t-SNE clustering of encoder activations by task.
-\end{itemize}
-
-\paragraph{Training setup.}
-Each oracle adapter was trained for 300 optimizer steps with learning rate $2\times10^{-4}$, batch size 1, sequence length 256, and at most 1,000 examples. Reconstruction used a maximum of 5,000 steps, learning rate $10^{-3}$, batch size 2, and eight descriptions per task. SFT used 2,500 optimizer steps, learning rate $5\times10^{-5}$, batch size 1, sequence length 192, 128 examples per task, and 16 descriptions per task. LoRA rank was 8 with $\alpha=16$ and dropout 0.05.
-
-Absolute numbers are not expected to match the 7B / 479-task paper; we instead test whether reconstruction recovers oracle performance and whether generated representations depend on task descriptions.
 
 \section{Results}
 
+\subsection{Task-encoder representation}
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.88\linewidth]{tsne_task_encoder.png}
+  \caption{t-SNE projection of task-encoder activations for three descriptions of each evaluation task. The plot suggests task-dependent structure in the text representations. The axes have no intrinsic meaning}
+  \label{fig:tsne}
+\end{figure}
+
+Figure~\ref{fig:tsne} shows some task-dependent structure. BoolQ and PIQA appear on opposite sides of the lower region, while ARC-Easy and OpenBookQA appear mainly in the upper region. The descriptions for each task are not uniformly mixed with descriptions from other tasks, suggesting that the encoder representations retain information about task identity. This is a qualitative visualization, however, and does not by itself show that the generated adapters will perform well.
+
 \subsection{Benchmark accuracy}
+Table~\ref{tab:results} summarizes the benchmark results. Reconstruction is the strongest result from the recreation: its 77.8\% average matches the oracle average and is 6.5 percentage points above the base model's average. On OpenBookQA, the reconstructed adapter scores 0.6 points above the oracle. This is consistent with the original paper's hypothesis that lossy reconstruction can sometimes act as a form of regularization. BoolQ is an exception: both adapted models score below the base model.
 
 \begin{table}[H]
   \centering
-  \caption{Accuracy (\%) on 500 examples per benchmark. The reconstructed T2L adapters recover the task-specific oracle performance, whereas the initial SFT run fails to transfer to the QA output formats.}
+  \caption{Accuracy (\%) on 500 examples per benchmark. Reconstruction closely matches the oracle results in this recreation. The initial SFT results are substantially lower and need further diagnosis.}
   \label{tab:results}
   \begin{tabular}{lccccc}
     \toprule
@@ -181,87 +190,96 @@ Absolute numbers are not expected to match the 7B / 479-task paper; we instead t
     Base model & 73.8 & 79.6 & 63.4 & 68.4 & 71.3 \\
     Oracle LoRA & 69.4 & 90.2 & 74.0 & 77.4 & 77.8 \\
     Reconstructed T2L & 69.0 & 90.2 & 74.0 & \textbf{78.0} & \textbf{77.8} \\
-    SFT T2L (initial) & 0.0 & 45.4 & 39.4 & 21.2 & 26.5 \\
+    SFT T2L (initial) & 60.0 & 39.0 & 49.2 & 34.8 & 45.8 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Reconstruction is the strongest replication result. Its 77.8\% average essentially matches the oracle average and improves on the base model by 6.5 percentage points. The small gain over the oracle on OpenBookQA is consistent with the paper's observation that lossy reconstruction can act as regularization. BoolQ is an exception: both adapted models underperform the already strong base model.
+The initial SFT-trained T2L model does not show the same improvement. As shown in Table~\ref{tab:results}, its accuracy ranges from 34.8\% on OpenBookQA to 49.2\% on PIQA, and its four-benchmark average is 45.8\%. These results do not demonstrate very successful zero-shot improvement from SFT in the current setup but scores alone do not identify the cause. Possible factors to investigate include the small training-task set, the use of synthetic default training data, the training budget, and implementation or evaluation details. However, no category scores much lower than the average which shows promise for future extensions and training for the final project.
 
-The initial SFT result is a diagnosed failure mode rather than evidence of numerical instability. The generated adapter weights were finite, but the SFT corpus used a narrow synthetic label format. At evaluation time, the adapted model often produced numeric or repeated-token outputs that did not match the Boolean and multiple-choice answer formats. This caused severe performance degradation, although some nonzero accuracy remained on ARC-Easy, PIQA, and OpenBookQA. We subsequently revised the SFT pipeline to use 12 training tasks and four held-out tasks, but the current cached manifest still uses synthetic task data and the revised configuration has not yet been evaluated.
+\subsection{Comparison to original paper}
 
-\paragraph{Description alignment.}
-On BoolQ, reconstruction T2L obtained 74\% with an aligned description, compared with 67\% for a random string and 61\% for a description from another task. Although this is a single-task ablation, the ordering supports the paper's claim that generated adapters depend on description--task alignment.
+Table~\ref{tab:paper-comparison} places selected results beside those reported in the original paper. This is a reference point rather than a controlled comparison: the paper uses Mistral-7B-Instruct, while this recreation uses Qwen2.5-1.5B-Instruct, and the training data, compute budget, and evaluation implementation also differ. We therefore do not interpret small differences in accuracy as evidence that one method is better. We omit an overall average because the selected table includes only two benchmarks, and the broader paper reports results across a different set of tasks.
 
-\subsection{Task-encoder representation}
+\begin{table}[t]
+\centering
+\caption{Selected PIQA and ARC-Easy results from this project and the original paper. Original-paper reconstruction results use the medium (M) hypernetwork with task-description embeddings. Values are accuracy percentages.}
+\label{tab:paper-comparison}
+\begin{tabular}{llrr}
+\toprule
+Evaluation & Method & PIQA & ARC-Easy \\
+\midrule
+\multicolumn{4}{l}{\textit{This project}} \\
+& Base model & 63.4 & 79.6 \\
+& Oracle LoRA & 74.0 & 90.2 \\
+& Reconstruction T2L & 74.0 & 90.2 \\
+& SFT-trained T2L & 34.8 & 39.0 \\
+\midrule
+\multicolumn{4}{l}{\textit{Original paper}} \\
+& Base model & 72.8 & 77.8 \\
+& Oracle LoRA & 69.9 & 89.9 \\
+& Reconstruction T2L (M) & 70.4 & 89.9 \\
+& SFT-trained T2L (M) & 81.8 & 89.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.88\linewidth]{artifacts/tsne_task_encoder.png}
-  \caption{t-SNE projection of task-encoder activations for three descriptions of each evaluation task. Same-task descriptions occupy distinct regions, showing that the conditioning pathway retains task-specific information. The axes have no intrinsic interpretation, and separation alone does not establish adapter quality.}
-  \label{fig:tsne}
-\end{figure}
+\subsection{Limitations of the recreation}
 
-Figure~\ref{fig:tsne} shows task-dependent local structure: BoolQ and PIQA occupy separated lower regions, while ARC-Easy and OpenBookQA lie primarily in the upper portion of the projection. Descriptions from the same task show some local structure in the projection, although this visualization should not be interpreted as a quantitative measure of task separability. The failed initial SFT accuracy also demonstrates that representation separation alone is not sufficient for useful adapter generation.
-
-\section{Limitations of the recreation}
+Several differences between this implementation and the original experiments limit how directly the results can be compared:
 
 \begin{itemize}
-  \item Smaller base model and far fewer SFT tasks/steps reduce zero-shot headroom.
-  \item The existing SFT results were produced by an earlier narrow task mixture and are not directly comparable to the current configuration. The current configuration reserves 12 training tasks and four held-out tasks, but the cached manifest presently uses synthetic task data rather than real Hugging Face or SNI tasks. The revised pipeline has not yet been evaluated.
-  \item Template paraphrases are weaker than GPT-4o-mini description banks.
-  \item Full Arrow Routing, Hyperdecoder, and evaluated multi-task LoRA baselines are omitted.
-  \item t-SNE preserves local neighborhoods but can distort global geometry; its axes and absolute distances should not be interpreted directly.
+  \item The base model and SFT task set are much smaller than those in the paper, which may limit the hypernetwork's ability to generalize. The final project will use a larger and more varied set of real tasks if compute permits; upgrading the base model may be impractical on local hardware.
+  \item The task descriptions use templates and paraphrases rather than the description bank generated with GPT-4o mini in the paper. This difference may affect how much task information the descriptions convey.
+  \item The experiments do not include full Arrow Routing or Hyperdecoder baselines; these methods are only documented in the project README.
 \end{itemize}
 
-\section{Possible Extensions (Final Project)}
+\section{Possible Extensions for the Final Project}
 
-We prioritize extensions that are feasible on 16--24\,GB GPUs yet scientifically meaningful relative to the paper.
+The following extensions build on this midterm implementation and focus on task diversity, the representation of adapter weights, language-based control, model transfer, and alternative adapter designs.
 
-\subsection{Extension A: Scale task diversity under fixed compute}
+\subsection{Extension A: Increase task diversity under a fixed compute budget}
 
-Reproduce the paper's finding that more tasks help \emph{only} when steps scale~(Table~3 / App.~C):
-sweep $\{4,8,12\}$ real Hugging Face tasks (or larger SNI subsets) at fixed vs.\ proportional step budgets; plot zero-shot benchmark average.
-\textbf{Deliverable:} scaling curves + short analysis of under-training vs.\ diversity.
+The paper reports that adding more training tasks helps when the number of training steps also increases (Table 3 and Appendix C). We could test this by training on 8, 16, and 32 real Hugging Face classification or SNI tasks. For each task count, we would compare a fixed training-step budget with a budget that increases in proportion to the number of tasks, then plot average zero-shot benchmark performance.
 
-\subsection{Extension B: Reconstruction in $\Delta W$ space}
+\paragraph{Expected deliverable.}
+Scaling curves and an analysis of whether performance is limited more by the diversity of available tasks or by insufficient training.
 
-App.~K notes that $A{\| }B$ permutations break weight-space similarity, while flattened $\Delta W{=}BA$ correlates better with task embedding similarity.
-Train a recon head on $BA$ (or SVD-aligned $A,B$) and compare zero-shot SFT-initialized-from-recon vs.\ scratch SFT.
-\textbf{Hypothesis:} $\Delta W$-space recon improves transfer of the reconstruction library into the SFT regime.
+\subsection{Extension B: Reconstruct adapters in $\Delta W$ space}
 
-\subsection{Extension C: Steerable / compositional descriptions}
+The original paper notes that the individual LoRA matrices $A$ and $B$ can be difficult to compare directly. Different combinations of these matrices can represent similar weight updates, so comparing the matrices element by element may not always capture how similar two adapters are. The combined update, $\Delta W=BA$, may be a more useful representation of the change each adapter makes to the model.
 
-Figure~4 in the paper shows answer-style steerability from wording alone.
-Build a controlled eval: same question, descriptions that request (i)~short answer, (ii)~chain-of-thought, (iii)~wrong domain.
-Measure accuracy \emph{and} format compliance.
-Optionally add a lightweight description rewriter (small local LM) before $f(z)$.
+One experiment could train the reconstruction head to predict $\Delta W$ directly, or use an SVD-based alignment of $A$ and $B$, and compare the results with the current method. We could then test whether initializing SFT from the reconstructed adapters improves performance compared with training the hypernetwork from scratch.
 
-\subsection{Extension D: Cross-model transfer}
+\paragraph{Hypothesis.}
+Reconstructing the actual weight update, rather than the separate factors alone, may provide a more useful starting point for transferring information from the adapter library into SFT.
 
-Paper limitation: whether T2L trained on a small sibling transfers within a family.
-Train hypernet on Qwen2.5-0.5B or 1.5B, evaluate generated LoRAs on 3B (same module layout) with frozen hypernet or a linear head remapping.
-\textbf{Deliverable:} transfer matrix across sizes.
+\subsection{Extension C: Control model behavior through task descriptions}
 
-\subsection{Extension E: Beyond $q/v$ LoRA}
+Figure 4 in the original paper suggests that changing the wording of a task description can influence the style of the generated adapter. We could test this with controlled descriptions for the same underlying question-answering task. For example, the descriptions could request (1) a short answer, (2) a step-by-step explanation, or (3) an answer framed for an unrelated domain.
 
-Replace or augment targets with MLP adapters / DoRA / rank patterns, or generate \emph{activation} modulators instead of weights~(discussion in~\cite{charakorn2025texttolora}).
-Even a single alternative output space (e.g., gate vectors per layer) would differentiate the final project from a pure replication.
+We would measure both task accuracy and whether the output follows the requested format. As an optional addition, a small local language model could rewrite descriptions before they are passed to the text encoder.
 
-\subsection{Recommended final-project path}
+\subsection{Extension D: Transfer across model sizes}
 
-\textbf{Primary:} Extensions A + C (scaling + steerability) on real HF/SNI data with full eval tables and t-SNE.\\
-\textbf{Stretch:} B or D if compute allows.\\
-This yields a clear narrative: \emph{faithful midterm recreation} $\to$ \emph{final project probes scaling, language control, and/or transfer beyond the original experimental budget}.
+An open question is whether a hypernetwork trained for one model size can generate useful adapters for a larger model in the same model family. We could train T2L using Qwen2.5-0.5B or Qwen2.5-1.5B and then evaluate whether its generated adapters transfer to Qwen2.5-3B, assuming the target layers have compatible layouts. Possible approaches include using the hypernetwork without changes or adding a small mapping layer to adjust its outputs.
+
+\paragraph{Expected deliverable.}
+A transfer matrix comparing performance across the source and target model sizes.
+
+\subsection{Recommended final-project plan}
+
+The most practical plan would be to combine Extensions A and C to test how task diversity affects performance and whether task descriptions can reliably steer model behavior. The main deliverables would be benchmark tables and t-SNE visualizations, paired with quantitative evaluation of task accuracy and output format. If time and compute permit, Extension B or D could be added. Together, these experiments would test when task descriptions help, how training-task diversity affects generalization, and whether T2L can transfer beyond its original setup.
 
 \section{Conclusion}
 
-Text-to-LoRA reframes adaptation as amortized inference over a hypernetwork conditioned on language.
-Our midterm recreation implements the core architectures and both training regimes with independent code at class scale on Qwen2.5-1.5B, running on an Apple M5 Pro with 24\,GB unified memory.
-The final project will move from replication toward analysis---especially task scaling, description steerability, and optionally $\Delta W$-space reconstruction or cross-size transfer.
+Text-to-LoRA explores whether a model can learn to generate task-specific LoRA adapters from natural-language descriptions instead of requiring a separate adapter-training run for every task. The original paper shows that this approach can reconstruct existing adapters and, with end-to-end SFT, generate useful adapters for tasks beyond the training set.
+
+This midterm recreation implements the main T2L components using Qwen2.5-1.5B on an Apple MacBook Pro with 24 GB of unified memory. Because the model, task set, and training budget are much smaller than those used in the paper, the goal is to study the method's behavior rather than reproduce the paper's scores exactly. The final project will investigate task scaling and description-based control, with reconstruction in $\Delta W$ space or cross-size transfer as possible extensions.
 
 \begin{ack}
 Course midterm project report for Deep Learning.
+
 Method based on Charakorn et al., ``Text-to-LoRA: Instant Transformer Adaption,'' 2025.
 \end{ack}
 
@@ -270,44 +288,33 @@ Method based on Charakorn et al., ``Text-to-LoRA: Instant Transformer Adaption,'
 \begin{thebibliography}{99}
 
 \bibitem[Beck et al.(2023)]{beck2023hyper}
-M.~Beck, et al.
+M. Beck, et al.
 \newblock A Survey of Meta-Reinforcement Learning.
 \newblock \emph{arXiv:2301.08028}, 2023.
-\newblock Bias-HyperInit as used by Charakorn et al.~\cite{charakorn2025texttolora}.
+\newblock Bias-HyperInit as used by Charakorn et al. \cite{charakorn2025texttolora}.
 
 \bibitem[Charakorn et al.(2025)]{charakorn2025texttolora}
-R.~Charakorn, E.~Cetin, Y.~Tang, and R.~T.~Lange.
+R. Charakorn, E. Cetin, Y. Tang, and R. T. Lange.
 \newblock Text-to-LoRA: Instant Transformer Adaption.
 \newblock \emph{arXiv:2506.06105}, 2025.
 \newblock \url{https://arxiv.org/abs/2506.06105}.
 
 \bibitem[Ha et al.(2016)]{ha2016hypernetworks}
-D.~Ha, A.~Dai, and Q.~V.~Le.
+D. Ha, A. Dai, and Q. V. Le.
 \newblock HyperNetworks.
 \newblock \emph{ICLR}, 2017.
 \newblock \url{https://arxiv.org/abs/1609.09106}.
 
 \bibitem[Hu et al.(2022)]{hu2022lora}
-E.~J.~Hu, et al.
+E. J. Hu, et al.
 \newblock LoRA: Low-Rank Adaptation of Large Language Models.
 \newblock \emph{ICLR}, 2022.
 
-\bibitem[Reimers and Gurevych(2019)]{reimers2019sentencebert}
-N.~Reimers and I.~Gurevych.
-\newblock Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.
-\newblock \emph{EMNLP-IJCNLP}, 2019.
-
-\bibitem[Wang et al.(2020)]{wang2020minilm}
-W.~Wang, F.~Wei, L.~Dong, H.~Bao, N.~Yang, and M.~Zhou.
-\newblock MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers.
-\newblock \emph{NeurIPS}, 2020.
-
 \bibitem[Wang et al.(2022)]{wang2022sni}
-Y.~Wang, et al.
+Y. Wang, et al.
 \newblock Super-NaturalInstructions: Generalization via Declarative Instructions on 1600+ NLP Tasks.
 \newblock \emph{EMNLP}, 2022.
 
 \end{thebibliography}
 }
-
 \end{document}
