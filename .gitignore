@@ -1,0 +1,11 @@
+artifacts/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+data/sni/
+data/hf_cache/
+data/_test_desc.json
+*.pt
+.DS_Store

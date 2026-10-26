@@ -1,0 +1,42 @@
+{
+  "boolq": [
+    "Answer yes/no questions about a passage with true or false.",
+    "Given a paragraph, decide if a claim is true or false.",
+    "Boolean question answering over short passages.",
+    "Read the text and answer the question with true or false only.",
+    "Verify factual claims against a provided passage.",
+    "Binary reading-comprehension: true if supported, else false.",
+    "Passage-based boolean QA without explanations.",
+    "Determine whether the answer to the question is true or false."
+  ],
+  "arc_easy": [
+    "Answer easy science multiple-choice questions with a single letter.",
+    "Grade-school science quiz: pick A, B, C, or D.",
+    "Choose the correct science fact from four options.",
+    "Elementary science reasoning with multiple choices.",
+    "Select the right answer letter for ARC-Easy items.",
+    "Science knowledge questions with letter-only answers.",
+    "Multiple-choice science: respond with the correct choice letter.",
+    "Answer ARC Easy exam questions concisely."
+  ],
+  "piqa": [
+    "Physical commonsense: choose solution 0 or 1.",
+    "Pick the more sensible way to achieve a physical goal.",
+    "PIQA-style physical reasoning with binary options.",
+    "Choose the practical solution for everyday physical tasks.",
+    "Commonsense physics: respond 0 or 1.",
+    "Select the better procedure for a physical goal.",
+    "Binary physical QA without explanations.",
+    "Decide which solution makes physical sense."
+  ],
+  "openbookqa": [
+    "Open-book science QA: answer with A, B, C, or D.",
+    "Science facts multiple-choice with letter responses.",
+    "OpenBookQA: choose the correct science answer letter.",
+    "Elementary science with open-book style facts.",
+    "Select A/B/C/D for science comprehension items.",
+    "Letter-only answers for open-book science questions.",
+    "Science MCQ grounded in basic facts.",
+    "Answer OpenBookQA items with a single letter."
+  ]
+}

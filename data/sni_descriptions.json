@@ -1,0 +1,170 @@
+{
+  "imdb_sentiment": [
+    "Classify movie review sentiment as negative or positive.",
+    "Your job: Classify movie review sentiment as negative or positive. Be precise.",
+    "Task: Classify movie review sentiment as negative or positive.",
+    "Please classify movie review sentiment as negative or positive. Be precise.",
+    "In this setting, Classify movie review sentiment as negative or positive.",
+    "Objective \u2014 Classify movie review sentiment as negative or positive. Be precise.",
+    "Instruction: Classify movie review sentiment as negative or positive.",
+    "Goal: Classify movie review sentiment as negative or positive. Be precise."
+  ],
+  "ag_news": [
+    "Classify a news article as World, Sports, Business, or Science and technology.",
+    "Your job: Classify a news article as World, Sports, Business, or Science and technology. Be precise.",
+    "Task: Classify a news article as World, Sports, Business, or Science and technology.",
+    "Please classify a news article as World, Sports, Business, or Science and technology. Be precise.",
+    "In this setting, Classify a news article as World, Sports, Business, or Science and technology.",
+    "Objective \u2014 Classify a news article as World, Sports, Business, or Science and technology. Be precise.",
+    "Instruction: Classify a news article as World, Sports, Business, or Science and technology.",
+    "Goal: Classify a news article as World, Sports, Business, or Science and technology. Be precise."
+  ],
+  "sst2": [
+    "Classify sentence sentiment as negative or positive.",
+    "Your job: Classify sentence sentiment as negative or positive. Be precise.",
+    "Task: Classify sentence sentiment as negative or positive.",
+    "Please classify sentence sentiment as negative or positive. Be precise.",
+    "In this setting, Classify sentence sentiment as negative or positive.",
+    "Objective \u2014 Classify sentence sentiment as negative or positive. Be precise.",
+    "Instruction: Classify sentence sentiment as negative or positive.",
+    "Goal: Classify sentence sentiment as negative or positive. Be precise."
+  ],
+  "emotion": [
+    "Classify the emotion as sadness, joy, love, anger, fear, or surprise.",
+    "Your job: Classify the emotion as sadness, joy, love, anger, fear, or surprise. Be precise.",
+    "Task: Classify the emotion as sadness, joy, love, anger, fear, or surprise.",
+    "Please classify the emotion as sadness, joy, love, anger, fear, or surprise. Be precise.",
+    "In this setting, Classify the emotion as sadness, joy, love, anger, fear, or surprise.",
+    "Objective \u2014 Classify the emotion as sadness, joy, love, anger, fear, or surprise. Be precise.",
+    "Instruction: Classify the emotion as sadness, joy, love, anger, fear, or surprise.",
+    "Goal: Classify the emotion as sadness, joy, love, anger, fear, or surprise. Be precise."
+  ],
+  "yelp_polarity": [
+    "Classify a Yelp review as negative or positive.",
+    "Your job: Classify a Yelp review as negative or positive. Be precise.",
+    "Task: Classify a Yelp review as negative or positive.",
+    "Please classify a Yelp review as negative or positive. Be precise.",
+    "In this setting, Classify a Yelp review as negative or positive.",
+    "Objective \u2014 Classify a Yelp review as negative or positive. Be precise.",
+    "Instruction: Classify a Yelp review as negative or positive.",
+    "Goal: Classify a Yelp review as negative or positive. Be precise."
+  ],
+  "dbpedia": [
+    "Classify Wikipedia content into its ontology category.",
+    "Your job: Classify Wikipedia content into its ontology category. Be precise.",
+    "Task: Classify Wikipedia content into its ontology category.",
+    "Please classify Wikipedia content into its ontology category. Be precise.",
+    "In this setting, Classify Wikipedia content into its ontology category.",
+    "Objective \u2014 Classify Wikipedia content into its ontology category. Be precise.",
+    "Instruction: Classify Wikipedia content into its ontology category.",
+    "Goal: Classify Wikipedia content into its ontology category. Be precise."
+  ],
+  "amazon_polarity": [
+    "Classify an Amazon review as negative or positive.",
+    "Your job: Classify an Amazon review as negative or positive. Be precise.",
+    "Task: Classify an Amazon review as negative or positive.",
+    "Please classify an Amazon review as negative or positive. Be precise.",
+    "In this setting, Classify an Amazon review as negative or positive.",
+    "Objective \u2014 Classify an Amazon review as negative or positive. Be precise.",
+    "Instruction: Classify an Amazon review as negative or positive.",
+    "Goal: Classify an Amazon review as negative or positive. Be precise."
+  ],
+  "tweet_sentiment": [
+    "Classify tweet sentiment as negative, neutral, or positive.",
+    "Your job: Classify tweet sentiment as negative, neutral, or positive. Be precise.",
+    "Task: Classify tweet sentiment as negative, neutral, or positive.",
+    "Please classify tweet sentiment as negative, neutral, or positive. Be precise.",
+    "In this setting, Classify tweet sentiment as negative, neutral, or positive.",
+    "Objective \u2014 Classify tweet sentiment as negative, neutral, or positive. Be precise.",
+    "Instruction: Classify tweet sentiment as negative, neutral, or positive.",
+    "Goal: Classify tweet sentiment as negative, neutral, or positive. Be precise."
+  ],
+  "mnli": [
+    "Classify the relation between a premise and hypothesis.",
+    "Your job: Classify the relation between a premise and hypothesis. Be precise.",
+    "Task: Classify the relation between a premise and hypothesis.",
+    "Please classify the relation between a premise and hypothesis. Be precise.",
+    "In this setting, Classify the relation between a premise and hypothesis.",
+    "Objective \u2014 Classify the relation between a premise and hypothesis. Be precise.",
+    "Instruction: Classify the relation between a premise and hypothesis.",
+    "Goal: Classify the relation between a premise and hypothesis. Be precise."
+  ],
+  "qnli_boolean": [
+    "Decide whether the sentence answers the question; return true or false.",
+    "Your job: Decide whether the sentence answers the question; return true or false. Be precise.",
+    "Task: Decide whether the sentence answers the question; return true or false.",
+    "Please decide whether the sentence answers the question; return true or false. Be precise.",
+    "In this setting, Decide whether the sentence answers the question; return true or false.",
+    "Objective \u2014 Decide whether the sentence answers the question; return true or false. Be precise.",
+    "Instruction: Decide whether the sentence answers the question; return true or false.",
+    "Goal: Decide whether the sentence answers the question; return true or false. Be precise."
+  ],
+  "mrpc_boolean": [
+    "Decide whether two sentences are paraphrases; return true or false.",
+    "Your job: Decide whether two sentences are paraphrases; return true or false. Be precise.",
+    "Task: Decide whether two sentences are paraphrases; return true or false.",
+    "Please decide whether two sentences are paraphrases; return true or false. Be precise.",
+    "In this setting, Decide whether two sentences are paraphrases; return true or false.",
+    "Objective \u2014 Decide whether two sentences are paraphrases; return true or false. Be precise.",
+    "Instruction: Decide whether two sentences are paraphrases; return true or false.",
+    "Goal: Decide whether two sentences are paraphrases; return true or false. Be precise."
+  ],
+  "rte": [
+    "Decide whether the first sentence entails the second.",
+    "Your job: Decide whether the first sentence entails the second. Be precise.",
+    "Task: Decide whether the first sentence entails the second.",
+    "Please decide whether the first sentence entails the second. Be precise.",
+    "In this setting, Decide whether the first sentence entails the second.",
+    "Objective \u2014 Decide whether the first sentence entails the second. Be precise.",
+    "Instruction: Decide whether the first sentence entails the second.",
+    "Goal: Decide whether the first sentence entails the second. Be precise."
+  ],
+  "sciq": [
+    "Answer a science multiple-choice question with A, B, C, or D.",
+    "Your job: Answer a science multiple-choice question with A, B, C, or D. Be precise.",
+    "Task: Answer a science multiple-choice question with A, B, C, or D.",
+    "Please answer a science multiple-choice question with A, B, C, or D. Be precise.",
+    "In this setting, Answer a science multiple-choice question with A, B, C, or D.",
+    "Objective \u2014 Answer a science multiple-choice question with A, B, C, or D. Be precise.",
+    "Instruction: Answer a science multiple-choice question with A, B, C, or D.",
+    "Goal: Answer a science multiple-choice question with A, B, C, or D. Be precise."
+  ],
+  "commonsense_qa": [
+    "Answer a commonsense multiple-choice question with its choice letter.",
+    "Your job: Answer a commonsense multiple-choice question with its choice letter. Be precise.",
+    "Task: Answer a commonsense multiple-choice question with its choice letter.",
+    "Please answer a commonsense multiple-choice question with its choice letter. Be precise.",
+    "In this setting, Answer a commonsense multiple-choice question with its choice letter.",
+    "Objective \u2014 Answer a commonsense multiple-choice question with its choice letter. Be precise.",
+    "Instruction: Answer a commonsense multiple-choice question with its choice letter.",
+    "Goal: Answer a commonsense multiple-choice question with its choice letter. Be precise."
+  ],
+  "qasc": [
+    "Answer a science multiple-choice question with its choice letter.",
+    "Your job: Answer a science multiple-choice question with its choice letter. Be precise.",
+    "Task: Answer a science multiple-choice question with its choice letter.",
+    "Please answer a science multiple-choice question with its choice letter. Be precise.",
+    "In this setting, Answer a science multiple-choice question with its choice letter.",
+    "Objective \u2014 Answer a science multiple-choice question with its choice letter. Be precise.",
+    "Instruction: Answer a science multiple-choice question with its choice letter.",
+    "Goal: Answer a science multiple-choice question with its choice letter. Be precise."
+  ],
+  "hellaswag": [
+    "Choose the most plausible continuation (0-3) of a passage.",
+    "HellaSwag sentence completion with numbered endings.",
+    "Commonsense ending selection: respond 0, 1, 2, or 3.",
+    "Pick the natural next event for the given context.",
+    "Activity continuation multiple-choice.",
+    "Select the coherent ending index for the passage.",
+    "Everyday situation completion, number only.",
+    "HellaSwag-style ending prediction without explanation.",
+    "Choose the most plausible continuation (0-3) of a passage.",
+    "Your job: Choose the most plausible continuation (0-3) of a passage. Be precise.",
+    "Task: Choose the most plausible continuation (0-3) of a passage.",
+    "Please choose the most plausible continuation (0-3) of a passage. Be precise.",
+    "In this setting, Choose the most plausible continuation (0-3) of a passage.",
+    "Objective \u2014 Choose the most plausible continuation (0-3) of a passage. Be precise.",
+    "Instruction: Choose the most plausible continuation (0-3) of a passage.",
+    "Goal: Choose the most plausible continuation (0-3) of a passage. Be precise."
+  ]
+}

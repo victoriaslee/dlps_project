@@ -1,0 +1,54 @@
+# Lite class-scale defaults (Mac MPS / 8–16GB GPU). Scale up later if needed.
+
+base_model: Qwen/Qwen2.5-1.5B-Instruct   # was 1.5B — ~3x faster, much less RAM
+embedder_model: sentence-transformers/all-MiniLM-L6-v2  # 384-d; faster than gte-large
+variant: M
+rank: 8                                  # was 8
+lora_alpha: 16
+target_modules: [q_proj, v_proj]
+dropout: 0.05
+gradient_checkpointing: false            # only enable on CUDA if VRAM is tight
+
+task_emb_dim: 64
+module_emb_dim: 32
+layer_emb_dim: 32
+hidden_dim: 128
+mlp_expand: 512
+embedder_dim: 384                        # MiniLM hidden size
+
+dtype: bfloat16                          # used on CUDA; MPS→fp16, CPU→fp32 automatically
+seed: 42
+output_dir: artifacts
+
+oracle:
+  tasks: [boolq, arc_easy, piqa, openbookqa]               # was 6 tasks
+  max_steps: 300                         # was 800
+  lr: 2.0e-4
+  batch_size: 1
+  grad_accum: 1
+  max_seq_len: 256                       # was 512
+  max_train_samples: 1000                 # was 2000
+
+recon:
+  conditioning: text
+  max_steps: 5000                        # was 20000
+  lr: 1.0e-3
+  batch_size: 2
+  early_stop_l1: 1.0e-3
+  descriptions_per_task: 8
+
+sft:
+  # 16 unique real tasks are available; reserve 4 for held-out validation.
+  n_train_tasks: 12
+  n_holdout_tasks: 4
+  descriptions_per_task: 16
+  max_steps: 2500                         # was 30000
+  lr: 5.0e-5
+  batch_size: 1
+  grad_accum: 1
+  max_seq_len: 192
+  samples_per_task: 128
+
+eval:
+  max_samples: 500                        
+  benches: [boolq, arc_easy, piqa, openbookqa]
